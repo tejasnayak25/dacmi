@@ -1,0 +1,20 @@
+fastapi
+uvicorn[standard]
+faiss-cpu
+neo4j
+sentence-transformers
+numpy
+
+# Config and environment handling
+pydantic-settings
+python-dotenv
+
+# Networking for agent-to-agent and service calls
+httpx
+
+# LLM integration (Stage 6, local-first)
+ollama
+
+# Utilities and testing
+tqdm
+pytest
