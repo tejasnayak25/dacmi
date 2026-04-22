@@ -10,6 +10,7 @@ from typing import Any
 from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
+from typing import Optional
 
 app = FastAPI()
 
@@ -78,7 +79,7 @@ def _dump_record(record: MemoryRecord) -> dict[str, Any]:
     return record.dict()
 
 
-def _matches(memory: MemoryRecord, query: str | None, tag: str | None, source: str | None) -> bool:
+def _matches(memory: MemoryRecord, query: Optional[str], tag: Optional[str], source: Optional[str]) -> bool:
     if query and query.lower() not in memory.content.lower():
         return False
 
@@ -127,9 +128,9 @@ async def store(memory: MemoryCreate):
 
 @app.get("/query", response_model=MemoryQueryResult)
 async def query(
-    q: str | None = Query(default=None, description="Search text inside memory content"),
-    tag: str | None = Query(default=None, description="Filter by tag"),
-    source: str | None = Query(default=None, description="Filter by source"),
+    q: Optional[str] = Query(default=None, description="Search text inside memory content"),
+    tag: Optional[str] = Query(default=None, description="Filter by tag"),
+    source: Optional[str] = Query(default=None, description="Filter by source"),
 ):
     with MEMORY_LOCK:
         memories = [_to_record(memory) for memory in _load_memories()]
