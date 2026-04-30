@@ -1,5 +1,27 @@
 fastapi
+<<<<<<< HEAD
 uvicorn
 faiss-cpu
 sentence-transformers
 numpy
+=======
+uvicorn[standard]
+faiss-cpu
+neo4j
+sentence-transformers
+numpy
+
+# Config and environment handling
+pydantic-settings
+python-dotenv
+
+# Networking for agent-to-agent and service calls
+httpx
+
+# LLM integration (Stage 6, local-first)
+ollama
+
+# Utilities and testing
+tqdm
+pytest
+>>>>>>> 4fb64cfc11363ca6298d92bfd6798d66132721d5
