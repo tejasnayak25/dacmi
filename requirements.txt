@@ -1,10 +1,4 @@
 fastapi
-<<<<<<< HEAD
-uvicorn
-faiss-cpu
-sentence-transformers
-numpy
-=======
 uvicorn[standard]
 faiss-cpu
 neo4j
@@ -24,4 +18,3 @@ ollama
 # Utilities and testing
 tqdm
 pytest
->>>>>>> 4fb64cfc11363ca6298d92bfd6798d66132721d5
