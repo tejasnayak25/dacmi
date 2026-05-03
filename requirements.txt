@@ -12,9 +12,16 @@ python-dotenv
 # Networking for agent-to-agent and service calls
 httpx
 
+# Authentication & cryptography
+python-jose[cryptography]
+cryptography
+
 # LLM integration (Stage 6, local-first)
 ollama
 
 # Utilities and testing
 tqdm
 pytest
+
+# Security and JWT (Reverted to python-jose for better JWK support)
+python-jose
