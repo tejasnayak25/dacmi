@@ -112,7 +112,7 @@ class MemoryEngine:
         return round(score, 2)
 
     def store(self, content, creator_id="system", privacy="public", min_importance=0.2, 
-              importance_override=None, triplet_override=None):
+              importance_override=None, triplets_override=None):
         """Store memory with optional pre-extracted metadata."""
         if content in self.memory_seen:
             return "duplicate"
@@ -144,17 +144,32 @@ class MemoryEngine:
         self._persist()
 
         # Graph Store (Neo4j) - Synchronized with Vector Store
-        if triplet_override:
-            sub, rel, obj = triplet_override
+        final_triplets = []
+        if triplets_override:
+            # triplets_override can be a list of dicts or a single triplet tuple (legacy support)
+            if isinstance(triplets_override, list):
+                for t in triplets_override:
+                    if isinstance(t, dict):
+                        final_triplets.append((t.get("subject"), t.get("relation"), t.get("object")))
+                    elif isinstance(t, (tuple, list)) and len(t) == 3:
+                        final_triplets.append(t)
+            elif isinstance(triplets_override, tuple) and len(triplets_override) == 3:
+                final_triplets.append(triplets_override)
         else:
-            sub, rel, obj = self._extract_triplet(content)
+            # Fallback to primitive extraction if nothing provided
+            fallback = self._extract_triplet(content)
+            if fallback[0]: final_triplets.append(fallback)
             
-        if sub and rel and obj:
-            print(f"🔗 Graph Link: Syncing [{sub}] -({rel})-> [{obj}]")
-            with self.driver.session() as session:
-                session.execute_write(self._create_relation_tx, sub, rel, obj, creator_id, privacy, importance)
+        if final_triplets:
+            for sub, rel, obj in final_triplets:
+                if sub and rel and obj:
+                    print(f"🔗 Graph Link: Syncing [{sub}] -({rel})-> [{obj}]")
+                    with self.driver.session() as session:
+                        session.execute_write(self._create_relation_tx, sub, rel, obj, creator_id, privacy, importance)
+                else:
+                    print(f"⚠️ Graph Link: Sync skipped (Incomplete triplet: {sub}/{rel}/{obj})")
         else:
-            print(f"⚠️ Graph Link: Sync skipped (Reason: Incomplete triplet extracted for '{content[:30]}...')")
+            print(f"⚠️ Graph Link: Sync skipped (No triplets extracted for '{content[:30]}...')")
         
         return "success"
 

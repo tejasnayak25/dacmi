@@ -59,37 +59,42 @@ class IntelligenceBrain:
             return "private"
         except: return "private"
 
-    async def extract_triplet(self, content):
-        if not ollama: return None, None, None
+    async def extract_triplets(self, content):
+        if not ollama: return []
         prompt = f"""
-        Extract a single Subject-Relation-Object triplet from the following text to be stored in a knowledge graph.
+        Extract ALL distinct Subject-Relation-Object triplets from the following text to be stored in a knowledge graph.
         
         PERSPECTIVE:
         - "User" is the person speaking/asking.
         - "DACMI" is the AI system receiving the message.
         
         EXAMPLES:
-        "I love the Tesla team" -> {{"subject": "User", "relation": "loves", "object": "Tesla team"}}
-        "Do you know GTA?" -> {{"subject": "User", "relation": "asks about", "object": "GTA"}}
-        "Your design is cool" -> {{"subject": "User", "relation": "likes", "object": "DACMI design"}}
-        "European architecture is beautiful" -> {{"subject": "European architecture", "relation": "is", "object": "beautiful"}}
+        "Swasthik is a human, he is my friend" -> [
+            {{"subject": "Swasthik", "relation": "is", "object": "human"}},
+            {{"subject": "Swasthik", "relation": "is friend of", "object": "User"}}
+        ]
+        "I love the Tesla team and know about GTA" -> [
+            {{"subject": "User", "relation": "loves", "object": "Tesla team"}},
+            {{"subject": "User", "relation": "knows about", "object": "GTA"}}
+        ]
+        "Do you know Manga?" -> [{{"subject": "User", "relation": "asks about", "object": "Manga"}}]
         
         STRICT RULES:
-        1. Return ONLY a JSON object: {{"subject": "X", "relation": "Y", "object": "Z"}}.
-        2. PRONOUN NORMALIZATION: Always convert 'I', 'me', 'my' to 'User'.
-        3. QUESTION PERSPECTIVE: If the user asks "Do you [verb] [object]?", the subject is "User" and the relation is "asks about" or "queries DACMI about".
-        4. If the sentence is a description, use "is" or "appears" as the relation.
+        1. Return ONLY a JSON list: [{{"subject": "X", "relation": "Y", "object": "Z"}}, ...].
+        2. Extract EVERY atomic fact separately.
+        3. PRONOUN NORMALIZATION: Always convert 'I', 'me', 'my' to 'User'.
+        4. Use precise, descriptive relations (e.g., "is friend of", "works at", "is named").
         5. Keep the subject and object to 1-3 words maximum.
         
         Text: "{content}"
         JSON:"""
         try:
             response = ollama.generate(model=LLM_MODEL, prompt=prompt)
-            match = re.search(r'\{.*\}', response['response'], re.DOTALL)
+            match = re.search(r'\[.*\]', response['response'], re.DOTALL)
             if match:
-                data = json.loads(match.group())
-                return data.get("subject"), data.get("relation"), data.get("object")
-        except: return None, None, None
+                return json.loads(match.group())
+            return []
+        except: return []
 
     async def contextualize_for_storage(self, question, history):
         """Rewrites the current message into a standalone statement using conversation history."""
@@ -150,7 +155,7 @@ class IntelligenceBrain:
         # 2. Proactive Memory Evaluation & Deduplication
         storage_status = None
         new_memory_stored = False
-        sub, rel, obj = None, None, None
+        new_triplets = []
         
         # Heuristic check: is this statement already mostly present in the retrieved context?
         is_redundant = any(context_statement.lower() in m.lower() or m.lower() in context_statement.lower() for m in direct_matches)
@@ -159,11 +164,11 @@ class IntelligenceBrain:
             importance = await self.evaluate_importance(context_statement)
             if importance >= 0.4:
                 privacy = await self.evaluate_privacy(context_statement)
-                # Pre-extract triplet to inject into UI later
-                sub, rel, obj = await self.extract_triplet(context_statement)
+                # Extract multiple facts for high-fidelity graph sync
+                new_triplets = await self.extract_triplets(context_statement)
                 success, engine_status = await self.store_important_memory(
                     context_statement, user_id=user_id, importance=importance, 
-                    privacy=privacy, triplet=(sub, rel, obj)
+                    privacy=privacy, triplets=new_triplets
                 )
                 if success:
                     if "duplicate" in str(engine_status):
@@ -212,19 +217,24 @@ class IntelligenceBrain:
             if context_statement not in direct_matches:
                 direct_matches.insert(0, context_statement)
             
-            # Update graph panel data
-            if sub and rel and obj:
-                concept_exists = False
-                for entry in related_concepts:
-                    if entry["original"].lower() == sub.lower():
-                        entry["connections"].append({"related": obj, "relation": rel, "importance": importance})
-                        concept_exists = True
-                        break
-                if not concept_exists:
-                    related_concepts.insert(0, {
-                        "original": sub,
-                        "connections": [{"related": obj, "relation": rel, "importance": importance}]
-                    })
+            # Update graph panel data with all extracted facts
+            for triplet in new_triplets:
+                sub = triplet.get("subject")
+                rel = triplet.get("relation")
+                obj = triplet.get("object")
+                
+                if sub and rel and obj:
+                    concept_exists = False
+                    for entry in related_concepts:
+                        if entry["original"].lower() == sub.lower():
+                            entry["connections"].append({"related": obj, "relation": rel, "importance": importance})
+                            concept_exists = True
+                            break
+                    if not concept_exists:
+                        related_concepts.insert(0, {
+                            "original": sub,
+                            "connections": [{"related": obj, "relation": rel, "importance": importance}]
+                        })
 
         return {
             "answer": answer,
@@ -233,19 +243,19 @@ class IntelligenceBrain:
             "related_concepts": related_concepts
         }
 
-    async def store_important_memory(self, content, user_id=None, importance=0.5, privacy="private", triplet=None):
+    async def store_important_memory(self, content, user_id=None, importance=0.5, privacy="private", triplets=None):
         clean_content = re.sub(r'^(remember|save|store|keep in mind|don\'t forget)( that| to)?(,|:)?\s*', '', content, flags=re.IGNORECASE)
         clean_content = clean_content.strip().capitalize()
         if not clean_content: return False, "empty content"
         
-        if triplet:
-            sub, rel, obj = triplet
+        if triplets:
+            final_triplets = triplets
         else:
-            sub, rel, obj = await self.extract_triplet(clean_content)
+            final_triplets = await self.extract_triplets(clean_content)
             
         payload = {
             "content": clean_content, "creator_id": user_id, "privacy": privacy,
-            "importance": importance, "subject": sub, "relation": rel, "object": obj
+            "importance": importance, "triplets": final_triplets
         }
         try:
             response = await self.client.post("/store", json=payload)

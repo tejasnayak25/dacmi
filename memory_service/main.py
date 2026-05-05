@@ -30,10 +30,14 @@ async def store_memory(data: dict):
     min_importance = data.get("min_importance", 0.2)
     
     # Optional triplets from brain
-    subject = data.get("subject")
-    relation = data.get("relation")
-    obj = data.get("object")
-    triplet = (subject, relation, obj) if subject and relation and obj else None
+    triplets = data.get("triplets", [])
+    # Handle legacy single-triplet fields if present
+    if not triplets:
+        sub = data.get("subject")
+        rel = data.get("relation")
+        obj = data.get("object")
+        if sub and rel and obj:
+            triplets = [(sub, rel, obj)]
     
     if not content:
         raise HTTPException(status_code=400, detail="Missing content")
@@ -44,7 +48,7 @@ async def store_memory(data: dict):
         privacy=privacy, 
         min_importance=min_importance,
         importance_override=importance,
-        triplet_override=triplet
+        triplets_override=triplets
     )
     
     return {
@@ -53,7 +57,7 @@ async def store_memory(data: dict):
             "creator_id": creator_id, 
             "privacy": privacy,
             "importance": importance,
-            "triplet": triplet
+            "triplets": triplets
         }
     }
 
