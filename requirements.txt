@@ -18,6 +18,7 @@ cryptography
 
 # LLM integration (Stage 6, local-first)
 ollama
+google-genai
 
 # Utilities and testing
 tqdm
